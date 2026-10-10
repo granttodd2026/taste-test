@@ -10,6 +10,6 @@ VER=$(cat dist/version.txt)
 TMP=$(mktemp -d); git clone -q -b gh-pages "$DEPLOY_REPO" "$TMP"
 find "$TMP" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -r dist/. "$TMP"/
-(cd "$TMP" && git add -A && git commit -qm "deploy $VER" && git push -q origin gh-pages)
+(cd "$TMP" && git add -A && git -c user.name=granttodd2026 -c user.email=granttodd2026@users.noreply.github.com commit -qm "deploy $VER" && git push -q origin gh-pages)
 git tag -a "v$(node -p "require('./package.json').version")" -m "release $VER" 2>/dev/null || true
 echo "Deployed $VER. Verify: curl -s <site>/version.txt"
