@@ -1,5 +1,5 @@
-// Versioned app-shell SW. 1.0.0+202610102100 is stamped by scripts/build.mjs. Prompted update flow (no unconditional skipWaiting).
-const VERSION = '1.0.0+202610102100';
+// Versioned app-shell SW. 1.0.1+202610102136 is stamped by scripts/build.mjs. Prompted update flow (no unconditional skipWaiting).
+const VERSION = '1.0.1+202610102136';
 const CACHE = 'tt-' + VERSION;
 const SHELL = ['./', 'index.html', 'app.js', 'tokens.css', 'app.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))));

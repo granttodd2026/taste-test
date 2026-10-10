@@ -8,7 +8,7 @@
 .qgrid{grid-template-columns:repeat(3,1fr)}
 .qbtn{min-height:92px;color:var(--ink);font-size:1rem}.qbtn .qi{font-size:1.8rem}.qbtn .cnt{font-size:var(--fs-tiny);color:var(--ink-2)}.qbtn.ghost{background:var(--surface-2)}
 .chips{display:flex;flex-wrap:wrap;gap:var(--s2);margin:var(--s2) 0;border:0;padding:0}
-.chip{min-height:44px;min-width:44px;padding:var(--s2) var(--s4);border-radius:var(--r-pill);border:1.5px solid var(--line-strong);background:var(--surface);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+.chip{min-height:48px;min-width:48px;box-sizing:border-box;padding:var(--s2) var(--s4);border-radius:var(--r-pill);border:1.5px solid var(--line-strong);background:var(--surface);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
 .chip.sel{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.chip.big{min-height:52px}
 .chip:has(input:checked){background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .chip input{width:20px;height:20px;margin:0}
