@@ -17,7 +17,7 @@ function showErr(e) { const m = String((e && (e.message || e)) || 'error').slice
 addEventListener('error', (e) => showErr(e.error || e.message));
 addEventListener('unhandledrejection', (e) => showErr(e.reason));
 
-const S = { tab: 'home', me: localStorage.getItem(LS.me) || '', who: null, scope: 'all', status: { connected: 0, total: 0, pending: 0 }, viewTrip: null, persisted: null };
+const S = { drafts: {}, whoFirst: false, tab: 'home', me: localStorage.getItem(LS.me) || '', who: null, scope: 'all', status: { connected: 0, total: 0, pending: 0 }, viewTrip: null, persisted: null };
 let db = null, code = null;
 
 // ---------- data helpers ----------
@@ -26,8 +26,9 @@ const people = () => all('person').sort((a, b) => a.name.localeCompare(b.name));
 const peopleMap = () => Object.fromEntries(people().map((p) => [p.id, p]));
 const nameOf = (id) => (peopleMap()[id] || {}).name || 'Someone';
 const trips = () => all('trip');
-const drinkKinds = () => [...DRINKS, ...all('dkind').sort((a, b) => a.ca - b.ca).map((d) => ({ k: d.id, label: d.label, icon: '🥂', title: `${d.label} Legend` }))];
+const drinkKinds = () => [...DRINKS, ...all('dkind').sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)).map((d) => ({ k: d.id, label: d.label, icon: '🥂', title: `${d.label} Legend` }))];
 const kindInfo = (k) => drinkKinds().find((d) => d.k === k) || drinkInfo(k);
+const kindOrder = (k) => { const i = drinkKinds().findIndex((d) => d.k === k); return i < 0 ? 999 : i; };
 const kindTitle = (k, person) => (DRINKS.some((d) => d.k === k) ? drinkTitle(k, person) : kindInfo(k).title);
 
 async function put(rec) { const r = await db.put(rec); U.track('put:' + rec.t); protectStorage(); return r; }
@@ -41,20 +42,33 @@ function toast(msg, undo) {
   el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 6000);
 }
 
+// ---------- keep typing safe across redraws (Melody name-picker fix pattern) ----------
+document.addEventListener('input', (e) => { if (e.target.id && e.target.matches('input:not([type=radio]):not([type=file])')) S.drafts[e.target.id] = e.target.value; });
+function snapFocus() { const a = document.activeElement; const id = a && a.id; return { id, sel: id && a.selectionStart != null ? [a.selectionStart, a.selectionEnd] : null }; }
+function restoreInputs(root, f) {
+  for (const i of root.querySelectorAll('input[id]')) if (i.id in S.drafts && i.type !== 'radio' && i.type !== 'file') i.value = S.drafts[i.id];
+  const el = f && f.id && document.getElementById(f.id);
+  if (el) { el.focus({ preventScroll: true }); if (f.sel) try { el.setSelectionRange(f.sel[0], f.sel[1]); } catch {} }
+}
+const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 // ---------- sheet (native dialog) ----------
 function sheet(title, html, onSubmit) {
-  const d = $('#sheet');
+  const d = $('#sheet'); const f = snapFocus(); const same = d.open && d.dataset.title === title;
+  if (!same) S.drafts = {};
+  d.dataset.title = title;
   d.innerHTML = `<form method="dialog" class="sheetform"><div class="sheethead"><h2 id="sheet-h">${esc(title)}</h2><button type="button" class="btn" data-close>Close</button></div>${html}</form>`;
   d.setAttribute('aria-labelledby', 'sheet-h');
   $('[data-close]', d).onclick = () => d.close();
   $('form', d).onsubmit = async (e) => { e.preventDefault(); const ok = await onSubmit?.(new FormData(e.target), e.submitter); if (ok !== false) d.close(); render(); };
   if (!d.open) d.showModal();
-  const f = $('input:not([type=hidden]), button[type=submit]', d); if (f && f.tagName === 'INPUT') f.focus();
+  if (same) restoreInputs(d, f); else { const i = $('input:not([type=hidden]):not([type=radio])', d); if (i) i.focus(); }
 }
 const closeSheet = () => { const d = $('#sheet'); if (d.open) d.close(); };
+document.addEventListener('close', (e) => { if (e.target.id === 'sheet') { S.drafts = {}; S.whoFirst = false; e.target.dataset.title = ''; } }, true);
 
 // ---------- who am I (device-only) ----------
 function whoSheet(first) {
+  S.whoFirst = !!first;
   const ps = people();
   sheet(first ? `Welcome to ${APP_NAME}! Who are you?` : 'Who are you on this phone?', `
     ${ps.length ? `<div class="chips">${ps.map((p) => `<button type="button" class="chip big" data-pick="${esc(p.id)}">${esc(p.name)}</button>`).join('')}</div><p class="small">Not listed? Add yourself:</p>` : '<p class="small">Add your first name. Everyone in the family adds their own.</p>'}
@@ -67,7 +81,7 @@ function whoSheet(first) {
   });
   for (const b of document.querySelectorAll('[data-pick]')) b.onclick = () => { setMe(b.dataset.pick); closeSheet(); render(); };
 }
-function setMe(id) { S.me = id; S.who = id; localStorage.setItem(LS.me, id); }
+function setMe(id) { S.whoFirst = false; S.me = id; S.who = id; localStorage.setItem(LS.me, id); }
 
 // ---------- render ----------
 const TABS = [['home', '🏠', 'Home'], ['bites', '🍽️', 'Bites'], ['boards', '🏆', 'Boards'], ['trips', '🏖️', 'Trips'], ['more', '⚙️', 'More']];
@@ -78,11 +92,11 @@ function syncPill() {
 }
 function render() {
   if (!db) return;
-  const keep = document.activeElement && document.activeElement.id; const y = scrollY;
+  const f = snapFocus(); const y = scrollY;
   for (const b of document.querySelectorAll('#nav [data-tab]')) { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); on ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'); }
   const view = { home: viewHome, bites: viewBites, boards: viewBoards, trips: viewTrips, more: viewMore }[S.tab]();
   $('#main').innerHTML = `<div class="top"><h1>${S.tab === 'home' ? esc(APP_NAME) : TABS.find((t) => t[0] === S.tab)[2]}</h1>${syncPill()}</div>${view}`;
-  if (keep && document.getElementById(keep)) document.getElementById(keep).focus({ preventScroll: true });
+  if (!$('#sheet').open) restoreInputs($('#main'), f);
   scrollTo(0, y);
 }
 function tripBanner() {
@@ -112,7 +126,7 @@ function viewHome() {
    <div class="cards">
     <div class="card"><div class="small">Drinks today</div><div class="big">${todayDrinks.length}</div><div class="small">${Object.entries(perP).sort((a, b) => b[1] - a[1]).map(([w, n]) => `${esc(nameOf(w))} ${n}`).join(' · ') || 'None yet'}</div></div>
     <div class="card"><div class="small">This month’s top bite</div><div class="big2">${mb.top[0] ? esc(mb.top[0].name) : '—'}</div><div class="small">${mb.top[0] ? `${mb.top[0].avg.toFixed(1)} / 10` : 'Rate something!'}</div></div>
-    <div class="card"><div class="small">Chug Champion this month</div><div class="big2">${mdb.overall[0] ? esc(nameOf(mdb.overall[0].who)) : '—'}</div><div class="small">${mdb.overall[0] ? `${mdb.overall[0].n} drinks` : 'Log a drink!'}</div></div>
+    <div class="card"><div class="small">Chug Champion this month</div><div class="big2">${mdb.overall[0] ? esc(nameOf(mdb.overall[0].who)) : '—'}</div><div class="small">${mdb.overall[0] ? plural(mdb.overall[0].n, 'drink') : 'Log a drink!'}</div></div>
    </div>
    ${feed.length ? `<ul class="list feed">${feed.map((f) => `<li><span>${f.html}</span><span class="small">${ago(f.at)}</span></li>`).join('')}</ul>` : '<p class="empty">Nothing yet. Tap a drink above or add a bite.</p>'}
   </section>`;
@@ -122,19 +136,19 @@ function viewBites() {
   const stats = biteStats(all('bite'), all('rating')).sort((a, b) => b.at - a.at);
   return `<p class="small">${esc(FOOD_SECTION)}: add a meal, snack, or restaurant dish. Everyone rates it 1–10.</p>
    <button class="btn primary wide big" data-act="addbite">➕ Add a bite</button>
-   ${stats.length ? `<ul class="list bites">${stats.map((b) => { const mine = b.ratings.find((r) => r.who === S.me); return `<li class="bite"><div><b>${(CATS.find((c) => c.k === b.cat) || CATS[0]).icon} ${esc(b.name)}</b><div class="small">${esc(nameOf(b.by))} · ${fmtDate(dayKey(b.at))} · ${b.n} rating${b.n === 1 ? '' : 's'}${mine ? ` · you: ${mine.score}` : ''}</div>${b.ratings.filter((r) => r.note).slice(0, 2).map((r) => `<div class="small quote">“${esc(r.note)}” – ${esc(nameOf(r.who))}</div>`).join('')}</div><div class="rcol">${stars(b.avg)}<button class="btn ${mine ? '' : 'primary'}" data-act="rate" data-id="${esc(b.id)}" aria-label="${mine ? 'Change rating for' : 'Rate'} ${esc(b.name)}">${mine ? 'Change' : 'Rate'}</button></div></li>`; }).join('')}</ul>` : '<p class="empty">No bites yet. Add the first one!</p>'}`;
+   ${stats.length ? `<ul class="list bites">${stats.map((b) => { const mine = b.ratings.find((r) => r.who === S.me); return `<li class="bite"><div><b>${(CATS.find((c) => c.k === b.cat) || CATS[0]).icon} ${esc(b.name)}</b><div class="small">${esc(nameOf(b.by))} · ${fmtDate(dayKey(b.at))} · ${plural(b.n, 'rating')}${mine ? ` · you: ${mine.score}` : ''}</div>${b.ratings.filter((r) => r.note).slice(0, 2).map((r) => `<div class="small quote">“${esc(r.note)}” – ${esc(nameOf(r.who))}</div>`).join('')}</div><div class="rcol">${stars(b.avg)}<button class="btn ${mine ? '' : 'primary'}" data-act="rate" data-id="${esc(b.id)}" aria-label="${mine ? 'Change rating for' : 'Rate'} ${esc(b.name)}">${mine ? 'Change' : 'Rate'}</button></div></li>`; }).join('')}</ul>` : '<p class="empty">No bites yet. Add the first one!</p>'}`;
 }
 function boardsHTML(scope, { daily } = {}) {
   const pm = peopleMap(), nm = (id) => esc(nameOf(id));
   const dbd = drinkBoards(all('drink'), scope), bb = biteBoards(all('bite'), all('rating'), scope);
   const rows = (arr, f) => `<ol class="rank">${arr.slice(0, 5).map((r, i) => `<li><span>${['🥇', '🥈', '🥉'][i] || i + 1 + '.'} ${f(r)}</span></li>`).join('')}</ol>`;
-  const drinkSec = dbd.total ? `<div class="cards">${Object.entries(dbd.byKind).map(([k, rs]) => `<div class="card board"><div class="small">${kindInfo(k).icon} ${esc(kindTitle(k, pm[rs[0].who]))}</div><div class="big2">${nm(rs[0].who)}</div>${rows(rs, (r) => `${nm(r.who)} · ${r.n}`)}</div>`).join('')}</div>` : '<p class="empty">No drinks logged here yet.</p>';
+  const drinkSec = dbd.total ? `<div class="cards">${Object.entries(dbd.byKind).sort(([a], [b]) => kindOrder(a) - kindOrder(b) || a.localeCompare(b)).map(([k, rs]) => `<div class="card board"><div class="small">${kindInfo(k).icon} ${esc(kindTitle(k, pm[rs[0].who]))}</div><div class="big2">${nm(rs[0].who)}</div>${rows(rs, (r) => `${nm(r.who)} · ${r.n}`)}</div>`).join('')}</div>` : '<p class="empty">No drinks logged here yet.</p>';
   const biteSec = bb.count ? `<div class="cards">
     <div class="card board"><div class="small">🥇 Top bites</div>${bb.top.length ? rows(bb.top, (b) => `${esc(b.name)} · ${b.avg.toFixed(1)}`) : '<p class="small">Nothing rated yet</p>'}</div>
     <div class="card board"><div class="small">🙈 Bottom bites</div>${bb.bottom.length ? rows(bb.bottom, (b) => `${esc(b.name)} · ${b.avg.toFixed(1)}`) : '<p class="small">Needs 2+ rated bites</p>'}</div>
-    <div class="card board"><div class="small">🍿 Snack Champ</div><div class="big2">${bb.snackChamp ? nm(bb.snackChamp.who) : '—'}</div><div class="small">${bb.snackChamp ? `${bb.snackChamp.n} snacks added` : 'Add a snack'}</div></div>
-    <div class="card board"><div class="small">😇 Most Generous Critic</div><div class="big2">${bb.generous ? nm(bb.generous.who) : '—'}</div><div class="small">${bb.generous ? `avg ${bb.generous.avg.toFixed(1)} over ${bb.generous.n}` : 'Needs 2+ ratings'}</div></div>
-    <div class="card board"><div class="small">🧐 Harshest Critic</div><div class="big2">${bb.harsh ? nm(bb.harsh.who) : '—'}</div><div class="small">${bb.harsh ? `avg ${bb.harsh.avg.toFixed(1)} over ${bb.harsh.n}` : 'Needs 2 critics'}</div></div></div>` : '<p class="empty">No bites here yet.</p>';
+    <div class="card board"><div class="small">🍿 Snack Champ</div><div class="big2">${bb.snackChamp ? nm(bb.snackChamp.who) : '—'}</div><div class="small">${bb.snackChamp ? `${plural(bb.snackChamp.n, 'snack')} added` : 'Add a snack'}</div></div>
+    <div class="card board"><div class="small">😇 Most Generous Critic</div><div class="big2">${bb.generous ? nm(bb.generous.who) : '—'}</div><div class="small">${bb.generous ? `avg ${bb.generous.avg.toFixed(1)} over ${plural(bb.generous.n, 'rating')}` : 'Needs 2+ ratings'}</div></div>
+    <div class="card board"><div class="small">🧐 Harshest Critic</div><div class="big2">${bb.harsh ? nm(bb.harsh.who) : '—'}</div><div class="small">${bb.harsh ? `avg ${bb.harsh.avg.toFixed(1)} over ${plural(bb.harsh.n, 'rating')}` : 'Needs 2 critics'}</div></div></div>` : '<p class="empty">No bites here yet.</p>';
   return `<h2>${daily ? 'Today’s' : ''} 🥤 ${esc(DRINK_SECTION)} boards</h2>${drinkSec}<h2>${daily ? 'Today’s' : ''} 🍽️ ${esc(FOOD_SECTION)} boards</h2>${biteSec}`;
 }
 function viewBoards() {
@@ -156,7 +170,7 @@ function tripView(t) {
    ${!t.archived ? `<div class="row2"><button class="btn primary" data-act="wrap" data-id="${esc(t.id)}">Final-night wrap-up</button><button class="btn" data-act="archive" data-id="${esc(t.id)}">Archive trip</button></div>` : ''}
    <h2>🏅 Trip awards</h2>${awardsHTML(t)}
    ${!t.archived && days.includes(today) ? boardsHTML({ kind: 'day', key: today, trip: t.id }, { daily: true }) : ''}
-   <h2>Day by day</h2><ul class="list">${perDay.map((x) => `<li><span>${fmtDate(x.d)}</span><span class="small">${x.n} logs</span></li>`).join('')}</ul>
+   <h2>Day by day</h2><ul class="list">${perDay.map((x) => `<li><span>${fmtDate(x.d)}</span><span class="small">${plural(x.n, 'log')}</span></li>`).join('')}</ul>
    <h2>Whole-trip boards</h2>${boardsHTML({ kind: 'trip', id: t.id })}</div>`;
 }
 function viewTrips() {
@@ -175,7 +189,7 @@ function viewMore() {
    <h2>Share</h2><p class="small">Send the private family link only to adults in the family. Anyone with it can see and add.</p><button class="btn wide" data-act="copylink">Copy family link</button>
    <h2>Look</h2><div class="chips seg" role="radiogroup" aria-label="Theme">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => `<button class="chip ${th === k ? 'sel' : ''}" role="radio" aria-checked="${th === k}" data-act="theme" data-k="${k}">${l}</button>`).join('')}</div>
    <h2>Help improve the app</h2><p class="small">Counts taps and screens only (never what you ate or wrote), stored encrypted in the family space.</p>
-   <button class="chip big ${U.usageOn() ? 'sel' : ''}" role="switch" aria-checked="${U.usageOn()}" data-act="usage" id="usage-sw">${U.usageOn() ? '✓ On' : '○ Off'} · usage totals</button>
+   <button class="btn wide ${U.usageOn() ? 'primary' : ''}" role="switch" aria-checked="${U.usageOn()}" data-act="usage" id="usage-sw">${U.usageOn() ? '✓ On' : '○ Off'} · usage totals</button>
    <h2>Backup</h2><div class="row2"><button class="btn" data-act="export">Export backup</button><label class="btn" for="import">Restore backup</label></div><input id="import" type="file" accept="application/json" class="sr-only" tabindex="-1">
    <h2>Diagnostics</h2><p class="small">Version <span id="ver">${esc(VERSION)}</span> · Storage: <span id="stor">${S.persisted ? 'protected' : 'not protected'}</span> · Errors: ${errLog.length}</p>`;
 }
@@ -228,7 +242,7 @@ const handlers = {
   }); },
   opentrip: (b) => { S.tab = 'trips'; S.viewTrip = b.dataset.id; U.track('screen:trip'); render(); },
   closetrip: () => { S.viewTrip = null; render(); },
-  wrap: (b) => { const t = db.get(b.dataset.id); if (!t) return; U.track('wrapup'); sheet(`🌅 ${t.name}: final-night wrap-up`, `<p class="small">${fmtDate(t.start)} – ${fmtDate(t.end)} · ${all('drink').filter((d) => d.trip === t.id).length} drinks · ${all('bite').filter((x) => x.trip === t.id).length} bites</p>${awardsHTML(t)}
+  wrap: (b) => { const t = db.get(b.dataset.id); if (!t) return; U.track('wrapup'); sheet(`🌅 ${t.name}: final-night wrap-up`, `<p class="small">${fmtDate(t.start)} – ${fmtDate(t.end)} · ${plural(all('drink').filter((d) => d.trip === t.id).length, 'drink')} · ${plural(all('bite').filter((x) => x.trip === t.id).length, 'bite')}</p>${awardsHTML(t)}
     ${t.archived ? '' : '<p class="small">When the trip is done, save it to the Trip Catalog.</p><button class="btn primary wide" type="submit">Archive to the Trip Catalog</button>'}`, async () => { await archive(t.id); }); },
   archive: (b) => archive(b.dataset.id),
   crown: async (b) => { const p = db.get(b.dataset.id); const next = { Royalty: 'Queen', Queen: 'King', King: 'Royalty' }[p.crown || 'Royalty']; await put({ ...p, crown: next }); render(); },
@@ -282,7 +296,7 @@ async function boot() {
   code = readCode();
   if (!code) return landing();
   if (!location.hash.includes('k=')) history.replaceState(null, '', '#k=' + code);
-  db = await createSync(code, { onChange: () => { if (!$('#sheet').open) render(); }, onStatus: (s) => { S.status = s; const p = $('#syncpill'); if (p) p.outerHTML = syncPill(); } });
+  db = await createSync(code, { onChange: () => { render(); if (S.whoFirst && !S.me && $('#sheet').open) whoSheet(true); }, onStatus: (s) => { S.status = s; const p = $('#syncpill'); if (p) p.outerHTML = syncPill(); } });
   $('#main').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (!b || !handlers[b.dataset.act]) return; U.track('tap:' + b.dataset.act); handlers[b.dataset.act](b); });
   $('#main').addEventListener('change', async (e) => {
     if (e.target.id !== 'import' || !e.target.files[0]) return;
@@ -293,9 +307,9 @@ async function boot() {
   S.persisted = await navigator.storage?.persisted?.().catch(() => false);
   if (S.me) S.who = S.me;
   render();
-  if (!S.me) { const t0 = Date.now(); while (!people().length && !S.status.synced && Date.now() - t0 < 2500) await new Promise((r) => setTimeout(r, 100)); if (!S.me) whoSheet(true); }
+  if (!S.me) { const t0 = Date.now(); while (!people().length && !db.isSynced() && Date.now() - t0 < 6000) await new Promise((r) => setTimeout(r, 100)); if (!S.me) whoSheet(true); }
   U.startUsage({ db, me: () => S.me, ver: VERSION }); U.timing('load_ready', performance.now()); U.track('open');
 }
 addEventListener('hashchange', () => { const m = location.hash.match(/k=([A-Za-z0-9_-]{20,})/); if (m && m[1] !== code) location.reload(); });
-window.__app = { VERSION, errLog, get db() { return db; }, S };
+window.__app = { VERSION, errLog, flushUsage: () => U.flush(), get db() { return db; }, S };
 boot();

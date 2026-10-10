@@ -9,7 +9,6 @@ export const RELAYS = [
   'wss://nos.lol',
   'wss://relay.primal.net',
   'wss://nostr.mom',
-  'wss://relay.nostr.net',
   'wss://nostr.oxtr.dev',
   'wss://temp.iris.to', // open strfry; replaces offchain.pub + bitcoiner.social (WoT rejects sender pubkey)
 ];

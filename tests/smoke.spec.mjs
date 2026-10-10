@@ -1,3 +1,5 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 import { test, expect, throwawayCode, openSpace, goTab } from './fixtures.mjs';
 test('first run: name, then drink log is 1 tap, has Undo, survives immediate reload', async ({ page }) => {
   await openSpace(page, throwawayCode(), 'Alex');
@@ -58,28 +60,53 @@ test('Trip Mode: start, logs tagged, awards, wrap-up, archive to catalog with Un
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(page.locator('.catalog')).toHaveCount(0);
 });
-test('every control is at least 44x44 CSS px on every tab', async ({ page }) => {
+const SEL = 'button, a[href], input:not([type=radio]):not(.sr-only), select, summary, label.btn, label.chip, .chip, [role=radio], [role=switch]';
+const tooSmall = (page, root) => page.$$eval(`${root} :is(${SEL})`, (els) => els
+  .filter((e) => e.offsetParent || e.closest('dialog[open]')).map((e) => { const r = e.getBoundingClientRect(); return { el: e.outerHTML.slice(0, 70), w: Math.round(r.width), h: Math.round(r.height) }; })
+  .filter((x) => x.w > 0 && (x.w < 44 || x.h < 44)));
+test('every control (chips, switches, sheets included) is at least 44x44 CSS px', async ({ page }) => {
   await openSpace(page, throwawayCode(), 'Alex');
-  for (const tab of ['home', 'bites', 'boards', 'trips', 'more']) {
-    await goTab(page, tab);
-    const small = await page.$$eval('button, a[href], input:not([type=radio]):not(.sr-only), select, summary, label.btn', (els) => els
-      .filter((e) => e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return { el: e.outerHTML.slice(0, 60), w: r.width, h: r.height }; })
-      .filter((x) => x.w < 44 || x.h < 44));
-    expect(small, tab).toEqual([]);
+  for (const tab of ['home', 'bites', 'boards', 'trips', 'more']) { await goTab(page, tab); expect(await tooSmall(page, 'body'), tab).toEqual([]); }
+  expect(await page.locator('[data-act=theme]').count()).toBe(3);
+  const sheets = [['home', '[data-act=customdrink]'], ['bites', '[data-act=addbite]'], ['trips', '[data-act=newtrip]'], ['more', '[data-act=addperson]'], ['more', '[data-act=switchme]']];
+  for (const [tab, btn] of sheets) {
+    await goTab(page, tab); await page.click(btn); await expect(page.locator('#sheet')).toBeVisible();
+    expect(await tooSmall(page, '#sheet'), btn).toEqual([]);
+    await page.click('#sheet [data-close]');
   }
+  await goTab(page, 'bites'); await page.click('[data-act=addbite]'); await page.fill('#bitein', 'X'); await page.click('#sheet button[type=submit]');
+  expect(await tooSmall(page, '#sheet'), 'rate sheet').toEqual([]);
 });
-test('export + restore round-trip restores all records', async ({ page }) => {
+test('export + restore round-trip through the real Export button and Restore input', async ({ page }) => {
   await openSpace(page, throwawayCode(), 'Alex');
   await page.getByRole('button', { name: /Beer/ }).click();
-  const json = await page.evaluate(() => window.__app.db.exportJSON());
-  const n = JSON.parse(json).records.length;
-  await page.evaluate(() => { localStorage.clear(); });
-  await openSpace(page, 'test' + 'x'.repeat(24) + Date.now(), 'Alex');
-  const r = await page.evaluate((j) => window.__app.db.restoreJSON(j), json);
-  expect(r.added).toBe(n);
+  await goTab(page, 'bites'); await page.click('[data-act=addbite]'); await page.fill('#bitein', 'Nachos'); await page.click('#sheet button[type=submit]');
+  await page.locator('#sheet .score-btn[value="7"]').click();
+  await goTab(page, 'more');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()]);
+  const file = await dl.path();
+  const n = JSON.parse(require('fs').readFileSync(file, 'utf8')).records.filter((r) => !r.del).length;
+  await page.evaluate(() => localStorage.clear());
+  await openSpace(page, throwawayCode(), 'Alex');
+  await goTab(page, 'more');
+  await page.setInputFiles('#import', file);
+  await expect(page.locator('#toast')).toContainText(`Restored ${n} entries`);
   await page.reload();
   await goTab(page, 'boards');
   await expect(page.locator('#main')).toContainText('Brew Boss');
+  await expect(page.locator('#main')).toContainText('Nachos · 7.0');
+});
+test('plurals: 1 drink, 1 snack, 1 rating', async ({ page }) => {
+  await openSpace(page, throwawayCode(), 'Alex');
+  await page.getByRole('button', { name: /Water/ }).click();
+  await expect(page.locator('#main')).toContainText('1 drink');
+  await expect(page.locator('#main')).not.toContainText('1 drinks');
+  await goTab(page, 'bites'); await page.click('[data-act=addbite]'); await page.fill('#bitein', 'Pretzels');
+  await page.locator('#sheet label.chip', { hasText: 'Snack' }).click(); await page.click('#sheet button[type=submit]');
+  await page.locator('#sheet .score-btn[value="5"]').click();
+  await expect(page.locator('.bite')).toContainText('1 rating');
+  await goTab(page, 'boards');
+  await expect(page.locator('#main')).toContainText('1 snack added');
 });
 test('version is stamped and the landing page works without a link', async ({ page }) => {
   await page.goto('/');

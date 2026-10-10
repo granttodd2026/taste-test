@@ -32,3 +32,17 @@ export async function phone(browser, info, port, code, name, when = '2026-10-10T
   return { p, ctx };
 }
 
+
+// A fresh phone (new profile) pointed at the local relay, opened at a given hash, no auto-naming.
+export async function freshPhone(browser, info, port, hash = '', when = '2026-10-10T14:00:00') {
+  const ctx = await browser.newContext({ ...info.project.use });
+  const p = await ctx.newPage();
+  await p.route(/^(?!(http|ws):\/\/localhost)/, (r) => r.abort());
+  await p.addInitScript(([port, t]) => {
+    const off = new Date(t).getTime() - Date.now(); const R = Date; const N = R.now.bind(R);
+    class D extends R { constructor(...a) { if (a.length) super(...a); else super(N() + off); } static now() { return N() + off; } } globalThis.Date = D;
+    const W = window.WebSocket; window.WebSocket = class extends W { constructor() { super('ws://localhost:' + port); } };
+  }, [port, when]);
+  await p.goto('/' + hash, { timeout: 30000 });
+  return { p, ctx };
+}

@@ -1,7 +1,6 @@
 import { test, expect, throwawayCode, openSpace } from './fixtures.mjs';
 import fs from 'fs';
 test('SW cache is named for the version; a new SW shows the Update banner; tap reloads once', async ({ page, browserName }) => {
-  test.skip(browserName === 'webkit', 'SW update emulation is Chromium-only here; verify on device');
   await openSpace(page, throwawayCode(), 'Alex');
   await page.evaluate(() => navigator.serviceWorker.ready);
   const v = await page.evaluate(() => window.__app.VERSION);

@@ -45,29 +45,31 @@ export function biteStats(bites, ratings) {
 export function biteBoards(bites, ratings, scope, minCritic = 2) {
   const bs = bites.filter((b) => inScope(b, scope));
   const stats = biteStats(bs, ratings);
-  const rated = stats.filter((s) => s.n).sort((a, b) => b.avg - a.avg || b.n - a.n || a.name.localeCompare(b.name));
+  const rated = stats.filter((s) => s.n).sort((a, b) => b.avg - a.avg || b.n - a.n || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const top = rated.slice(0, 5), bottom = rated.length > 1 ? [...rated].reverse().slice(0, Math.min(5, rated.length - top.length || 1)) : [];
   const snacks = {};
   for (const s of stats) if (s.cat === 'snack') snacks[s.by] = (snacks[s.by] || 0) + 1;
   const crit = {};
   for (const s of stats) for (const r of s.ratings) { const c = (crit[r.who] ||= { who: r.who, n: 0, sum: 0 }); c.n++; c.sum += r.score; }
   const critics = Object.values(crit).filter((c) => c.n >= minCritic).map((c) => ({ ...c, avg: c.sum / c.n }));
-  const generous = [...critics].sort((a, b) => b.avg - a.avg || b.n - a.n)[0] || null;
-  const harsh = critics.length > 1 ? [...critics].sort((a, b) => a.avg - b.avg || b.n - a.n)[0] : null;
+  const generous = [...critics].sort((a, b) => b.avg - a.avg || b.n - a.n || a.who.localeCompare(b.who))[0] || null;
+  const harsh = critics.length > 1 ? [...critics].sort((a, b) => a.avg - b.avg || b.n - a.n || a.who.localeCompare(b.who))[0] : null;
   const snackRank = Object.entries(snacks).map(([who, n]) => ({ who, n })).sort((a, b) => b.n - a.n || a.who.localeCompare(b.who));
   return { count: bs.length, top, bottom, snackChamp: snackRank[0] || null, snackRank, generous, harsh, critics };
 }
 // Awards for a trip or a day: one line per title, ties broken by name.
 export function awards(drinks, bites, ratings, scope, people) {
   const nm = (id) => (people[id] && people[id].name) || 'Someone';
+  const pl = (n, w) => `${n} ${n === 1 ? w : w + 's'}`;
   const out = [];
   const db = drinkBoards(drinks, scope);
-  if (db.overall[0]) out.push({ title: 'Chug Champion', icon: '🏆', who: nm(db.overall[0].who), detail: `${db.overall[0].n} drinks` });
-  for (const [k, rows] of Object.entries(db.byKind)) { const i = drinkInfo(k); out.push({ title: drinkTitle(k, people[rows[0].who]), icon: i.icon, who: nm(rows[0].who), detail: `${rows[0].n} ${i.label.toLowerCase()}` }); }
+  if (db.overall[0]) out.push({ title: 'Chug Champion', icon: '🏆', who: nm(db.overall[0].who), detail: pl(db.overall[0].n, 'drink') });
+  const ord = (k) => { const i = DRINKS.findIndex((d) => d.k === k); return i < 0 ? 99 : i; };
+  for (const [k, rows] of Object.entries(db.byKind).sort(([a], [b]) => ord(a) - ord(b) || a.localeCompare(b))) { const i = drinkInfo(k); out.push({ title: drinkTitle(k, people[rows[0].who]), icon: i.icon, who: nm(rows[0].who), detail: `${rows[0].n} ${i.label.toLowerCase()}` }); }
   const bb = biteBoards(bites, ratings, scope, 1);
   if (bb.top[0]) out.push({ title: 'Best Bite', icon: '🥇', who: bb.top[0].name, detail: `${bb.top[0].avg.toFixed(1)} / 10` });
   if (bb.bottom[0] && bb.bottom[0].id !== bb.top[0]?.id) out.push({ title: 'Bad Bite', icon: '🙈', who: bb.bottom[0].name, detail: `${bb.bottom[0].avg.toFixed(1)} / 10` });
-  if (bb.snackChamp) out.push({ title: 'Snack Champ', icon: '🍿', who: nm(bb.snackChamp.who), detail: `${bb.snackChamp.n} snacks` });
+  if (bb.snackChamp) out.push({ title: 'Snack Champ', icon: '🍿', who: nm(bb.snackChamp.who), detail: pl(bb.snackChamp.n, 'snack') });
   if (bb.generous) out.push({ title: 'Most Generous Critic', icon: '😇', who: nm(bb.generous.who), detail: `avg ${bb.generous.avg.toFixed(1)}` });
   if (bb.harsh) out.push({ title: 'Harshest Critic', icon: '🧐', who: nm(bb.harsh.who), detail: `avg ${bb.harsh.avg.toFixed(1)}` });
   return out;
