@@ -31,7 +31,8 @@ const kindInfo = (k) => drinkKinds().find((d) => d.k === k) || drinkInfo(k);
 const kindOrder = (k) => { const i = drinkKinds().findIndex((d) => d.k === k); return i < 0 ? 999 : i; };
 const kindTitle = (k, person) => (DRINKS.some((d) => d.k === k) ? drinkTitle(k, person) : kindInfo(k).title);
 
-async function put(rec) { const r = await db.put(rec); U.track('put:' + rec.t); protectStorage(); return r; }
+async function put(rec) {
+  if (!S.me && rec.t !== 'person' && rec.t !== 'usage') { whoSheet(true); throw new Error('pick-name-first'); } const r = await db.put(rec); U.track('put:' + rec.t); protectStorage(); return r; }
 
 // ---------- toast with Undo ----------
 let toastT;
@@ -105,6 +106,9 @@ function tripBanner() {
   return `<div class="banner trip"><div><b>🏖️ ${esc(t.name)}</b><div class="small">Day ${i} of ${days.length} · logs count toward the trip</div></div>${isFinalNight(t) ? `<button class="btn primary" data-act="wrap" data-id="${esc(t.id)}">Final-night wrap-up</button>` : `<button class="btn" data-act="opentrip" data-id="${esc(t.id)}">Trip boards</button>`}</div>`;
 }
 function viewHome() {
+  if (!S.me) return `${tripBanner()}<section class="finding" aria-labelledby="fy-h"><h2 id="fy-h">${S.finding ? 'Finding your family…' : 'Who’s on this phone?'}</h2>
+    <p class="small">${S.finding ? 'Loading your family’s names. You can log drinks as soon as you pick yours.' : 'Pick your name to start logging drinks and rating bites.'}</p>
+    <button class="btn primary wide big" data-act="switchme">${S.finding ? 'Choose my name now' : 'Choose my name'}</button></section>`;
   const ps = people(); if (!S.who || !peopleMap()[S.who]) S.who = S.me;
   const today = dayKey(Date.now());
   const myToday = all('drink').filter((d) => d.who === S.who && dayKey(d.at) === today);
@@ -196,6 +200,7 @@ function viewMore() {
 
 // ---------- actions ----------
 async function logDrink(k) {
+  if (!S.me) { whoSheet(true); return; }
   const t0 = performance.now();
   const t = activeTrip(trips());
   const r = await put({ id: uid('d'), t: 'drink', who: S.who || S.me, kind: k, at: Date.now(), by: S.me, ...(t ? { trip: t.id } : {}) });
@@ -213,6 +218,8 @@ function rateSheet(id) {
     toast(`Rated ${b.name} ${score}/10`, () => (prev ? put(prev) : db.remove(r.id)));
   });
 }
+// Actions that are fine before this phone has picked a name (nothing gets logged).
+const NO_NAME_OK = new Set(['switchme', 'theme', 'usage', 'export', 'copylink', 'scope', 'opentrip', 'closetrip', 'who']);
 const handlers = {
   drink: (b) => logDrink(b.dataset.k),
   who: (b) => { S.who = b.dataset.id; render(); },
@@ -297,7 +304,7 @@ async function boot() {
   if (!code) return landing();
   if (!location.hash.includes('k=')) history.replaceState(null, '', '#k=' + code);
   db = await createSync(code, { onChange: () => { render(); if (S.whoFirst && !S.me && $('#sheet').open) whoSheet(true); }, onStatus: (s) => { S.status = s; const p = $('#syncpill'); if (p) p.outerHTML = syncPill(); } });
-  $('#main').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (!b || !handlers[b.dataset.act]) return; U.track('tap:' + b.dataset.act); handlers[b.dataset.act](b); });
+  $('#main').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (!b || !handlers[b.dataset.act]) return; U.track('tap:' + b.dataset.act); if (!S.me && !NO_NAME_OK.has(b.dataset.act)) { whoSheet(true); return; } handlers[b.dataset.act](b); });
   $('#main').addEventListener('change', async (e) => {
     if (e.target.id !== 'import' || !e.target.files[0]) return;
     try { const r = db.restoreJSON(await e.target.files[0].text()); render(); toast(`Restored ${r.added + r.updated} entries`); } catch { toast('That file isn’t a backup from this app. Nothing was changed.'); }
@@ -307,7 +314,7 @@ async function boot() {
   S.persisted = await navigator.storage?.persisted?.().catch(() => false);
   if (S.me) S.who = S.me;
   render();
-  if (!S.me) { const t0 = Date.now(); while (!people().length && !db.isSynced() && Date.now() - t0 < 6000) await new Promise((r) => setTimeout(r, 100)); if (!S.me) whoSheet(true); }
+  if (!S.me) { S.finding = true; render(); const t0 = Date.now(); while (!people().length && !db.isSynced() && Date.now() - t0 < 6000) await new Promise((r) => setTimeout(r, 100)); S.finding = false; render(); if (!S.me) whoSheet(true); }
   U.startUsage({ db, me: () => S.me, ver: VERSION }); U.timing('load_ready', performance.now()); U.track('open');
 }
 addEventListener('hashchange', () => { const m = location.hash.match(/k=([A-Za-z0-9_-]{20,})/); if (m && m[1] !== code) location.reload(); });

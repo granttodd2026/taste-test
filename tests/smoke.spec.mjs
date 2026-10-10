@@ -114,3 +114,21 @@ test('version is stamped and the landing page works without a link', async ({ pa
   const v = await page.evaluate(() => window.__app.VERSION);
   expect(v).toMatch(/^\d+\.\d+\.\d+\+\d{12}$/);
 });
+test('fresh profile with relays that never answer: "Finding your family…", no logging until a name is picked', async ({ page }) => {
+  await page.addInitScript(() => { window.WebSocket = class { constructor() { window.__ws = (window.__ws || 0) + 1; } send() {} close() {} }; }); // sockets hang: slow relays
+  await page.goto('/#k=' + throwawayCode());
+  await expect(page.getByRole('heading', { name: 'Finding your family…' })).toBeVisible();
+  await expect(page.locator('[data-act=drink]')).toHaveCount(0);
+  await goTab(page, 'bites'); await page.click('[data-act=addbite]');
+  await expect(page.locator('#mein')).toBeVisible(); // any logging action asks for a name first
+  await page.click('#sheet [data-close]');
+  expect(await page.evaluate(() => window.__app.db.all().filter((r) => r.t !== 'usage').length)).toBe(0);
+  await goTab(page, 'home');
+  await expect(page.locator('#mein')).toBeVisible({ timeout: 10000 }); // picker opens after the wait
+  await page.fill('#mein', 'Alex'); await page.click('#sheet button[type=submit]');
+  await page.getByRole('button', { name: /Water/ }).click();
+  const recs = await page.evaluate(() => window.__app.db.all().filter((r) => r.t === 'drink'));
+  expect(recs).toHaveLength(1);
+  expect(recs[0].who).toMatch(/^p-/);
+  expect(recs.every((r) => r.who && r.by)).toBe(true);
+});

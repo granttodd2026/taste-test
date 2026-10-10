@@ -3,7 +3,7 @@
 const THROWAWAY = 'test' + 'lhci'.repeat(6);
 module.exports = {
   ci: {
-    collect: { staticDistDir: './dist', url: ['http://localhost/index.html', 'http://localhost/index.html#k=' + THROWAWAY], puppeteerScript: './lighthouse-setup.cjs', puppeteerLaunchOptions: { executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', args: ['--no-sandbox'] }, numberOfRuns: 3, settings: { formFactor: 'mobile', chromeFlags: '--no-sandbox --headless=new' } },
+    collect: { staticDistDir: './dist', url: ['http://localhost/index.html', 'http://localhost/index.html#k=' + THROWAWAY], puppeteerScript: './lighthouse-setup.cjs', puppeteerLaunchOptions: { executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', args: ['--no-sandbox'] }, numberOfRuns: 3, settings: { formFactor: 'mobile', blockedUrlPatterns: ['wss://*', 'ws://*'] } },
     assert: {
       assertions: {
         'categories:performance': ['error', { minScore: 0.9 }],
