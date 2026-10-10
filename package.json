@@ -1,0 +1,27 @@
+{
+  "name": "taste-test",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "npx serve -l 8799 dist",
+    "test": "npm run build && playwright test",
+    "test:iphone": "npm run build && playwright test --project=iphone-webkit",
+    "test:a11y": "npm run build && playwright test tests/a11y.spec.mjs",
+    "lhci": "npm run build && lhci autorun",
+    "secrets": "sh scripts/check-secrets.sh",
+    "gate": "npm run secrets && npm test && npm run lhci"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@lhci/cli": "^0.14.0",
+    "@playwright/test": "^1.64.0",
+    "esbuild": "^0.25.12",
+    "serve": "^14.2.0"
+  },
+  "dependencies": {
+    "nostr-tools": "^2.25.2",
+    "ws": "^8.22.0"
+  }
+}

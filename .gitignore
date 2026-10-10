@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.lighthouseci/
+test-results/
+playwright-report/
+screenshots/
+.secrets.json
+*.secret*
+.env*
+FAMILY_LINK*
+.test-dist/
