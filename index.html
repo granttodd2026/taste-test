@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Private family drink and food scoreboard">
+<meta name="theme-color" content="#FBF7F3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17141A" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Taste Test">
+<title>Taste Test</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="update" class="banner" hidden role="region" aria-label="Update"><span>A new version is ready.</span><button class="btn primary" id="update-btn">Update</button></div>
+<div id="err" class="banner" hidden role="alert"><span>Something went wrong. Your entries are safe.</span><button class="btn" id="err-btn">Reload</button></div>
+<main id="main"><h1>Taste Test</h1></main>
+<nav id="nav" aria-label="Sections" hidden></nav>
+<dialog id="sheet"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

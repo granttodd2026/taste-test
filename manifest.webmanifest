@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "Taste Test",
+  "short_name": "Taste Test",
+  "description": "Private family drink and food scoreboard",
+  "scope": "./",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FBF7F3",
+  "theme_color": "#FBF7F3",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
